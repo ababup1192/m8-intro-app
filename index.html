@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>M8 Trainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <div class="top">
+      <section class="screen-wrap">
+        <div class="screen" id="screen">
+          <div class="lcd">
+            <div class="screen-body" id="screen-body"></div>
+            <div class="minimap" id="minimap"></div>
+          </div>
+        </div>
+      </section>
+      <section class="side">
+        <nav class="tabs" id="tabs"></nav>
+        <ul class="actions" id="actions"></ul>
+      </section>
+    </div>
+
+    <section class="pad" id="pad">
+      <button class="key arrow" data-key="up"    style="--x:24.7%;--y:4.4%"  aria-label="UP">▲</button>
+      <button class="key mod"   data-key="opt"   style="--x:54.3%;--y:0%"    aria-label="OPTION">OPT</button>
+      <button class="key mod"   data-key="edit"  style="--x:78.9%;--y:0%"    aria-label="EDIT">EDIT</button>
+      <button class="key arrow" data-key="left"  style="--x:0%;--y:37.2%"    aria-label="LEFT">◀</button>
+      <button class="key arrow" data-key="down"  style="--x:24.7%;--y:37.2%" aria-label="DOWN">▼</button>
+      <button class="key arrow" data-key="right" style="--x:49.3%;--y:37.2%" aria-label="RIGHT">▶</button>
+      <button class="key mod"   data-key="shift" style="--x:27.1%;--y:71.9%" aria-label="SHIFT">SHIFT</button>
+      <button class="key mod"   data-key="play"  style="--x:51.8%;--y:71.9%" aria-label="PLAY">PLAY</button>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
