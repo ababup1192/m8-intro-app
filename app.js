@@ -126,7 +126,7 @@ function selectionActions() {
 
 function selectionTools() {
   const list = [act('sel-start', '範囲選択を開始', ['shift'], 'opt')];
-  if (canPaste()) list.unshift(act('paste', 'ペースト (カーソル位置へ)', ['shift'], 'edit'));
+  if (canPaste()) list.unshift(act('paste', 'ペースト (カーソル位置に挿入)', ['shift'], 'edit'));
   return list;
 }
 let tab = 'edit';
@@ -783,6 +783,12 @@ function paste() {
   if (clip.view !== st.view) return log([], 'NO FUNCTION', true);
   const g = GRID[st.view], p = curPos();
   const col0 = st.view === 'song' ? p.col : clip.c0;  // tracks are alike; chain/phrase columns are not
+  const n = clip.data.length;
+  const cols = clip.data[0].length;
+  // insert: rows from the cursor down are pushed down by n; anything past the end falls off
+  for (let c = col0; c < Math.min(col0 + cols, g.cols); c++) {
+    for (let r = g.rows - 1; r >= p.row + n; r--) cellSet(r, c, cellGet(r - n, c));
+  }
   clip.data.forEach((rowData, i) => rowData.forEach((v, j) => {
     const r = p.row + i, c = col0 + j;
     if (r < g.rows && c < g.cols) cellSet(r, c, v);
@@ -813,9 +819,11 @@ function selectionEdit(dir) {
   }
 }
 
-// song view: the selected block moves one row, the displaced row swaps to the other side
+// song view: the selected block moves one row into empty space; it stops at a row that has chains
 function moveSongBlock(r0, r1, c0, c1, step) {
-  if (r0 + step < 0 || r1 + step > 255) return log([], 'NO FUNCTION', true);
+  if (r0 + step < 0 || r1 + step > 255) return;
+  const target = step < 0 ? r0 - 1 : r1 + 1;
+  for (let c = c0; c <= c1; c++) if (song[target][c] !== EMPTY) return;  // blocked: selection stays put
   for (let c = c0; c <= c1; c++) {
     const col = [];
     for (let r = r0; r <= r1; r++) col.push(song[r][c]);
