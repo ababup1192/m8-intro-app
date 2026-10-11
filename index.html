@@ -12,7 +12,26 @@
 </head>
 <body>
   <main class="app">
-    <div class="top">
+    <div class="top" id="top">
+      <aside class="side" id="side">
+        <div class="side-head">
+          <button class="side-toggle" id="side-toggle" aria-expanded="true" aria-controls="side-body" aria-label="Toggle list">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="3"/>
+              <path d="M10 4v16"/>
+              <path d="M5.5 8h2M5.5 11h2"/>
+            </svg>
+          </button>
+          <div class="lang" id="lang" role="group" aria-label="Language">
+            <button data-lang="ja"><span class="flag" aria-hidden="true">🇯🇵</span>JP</button>
+            <button data-lang="en"><span class="flag" aria-hidden="true">🇺🇸</span>EN</button>
+          </div>
+        </div>
+        <div class="side-body" id="side-body">
+          <nav class="tabs" id="tabs"></nav>
+          <ul class="actions" id="actions"></ul>
+        </div>
+      </aside>
       <section class="screen-wrap">
         <div class="screen" id="screen">
           <div class="lcd">
@@ -20,10 +39,6 @@
             <div class="minimap" id="minimap"></div>
           </div>
         </div>
-      </section>
-      <section class="side">
-        <nav class="tabs" id="tabs"></nav>
-        <ul class="actions" id="actions"></ul>
       </section>
     </div>
 

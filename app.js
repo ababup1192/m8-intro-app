@@ -12,8 +12,8 @@ const NOTE_NAMES = ['C-', 'C#', 'D-', 'D#', 'E-', 'F-', 'F#', 'G-', 'G#', 'A-', 
 const FX_CMDS = [
   'ARP', 'ARC', 'CHA', 'DEL', 'GRV', 'GGR', 'HOP', 'INS', 'KIL', 'RND', 'RNL', 'RET', 'REP', 'RTO', 'RMX', 'NTH',
   'PSL', 'PBN', 'PVB', 'PVX', 'SCA', 'SCG', 'SNG', 'SED', 'TBL', 'THO', 'TIC', 'TBX', 'TPO', 'TSP', 'NXT', 'OFF',
-  'MTT', 'EQM', 'EQI', 'VMV', 'XMT', 'XMM', 'XMF', 'XMW', 'XMR', 'XDT', 'XDF', 'XDW', 'XDR', 'XRS', 'XRM', 'XRF',
-  'XRW', 'XRZ', 'VMX', 'VDE', 'VRE', 'USB', 'VOL', 'PIT', 'FIN',
+  'MTT', 'EQM', 'EQI', 'VMV', 'XMT', 'XMM', 'XMF', 'XMW', 'XMR', 'XDT', 'XDF', 'XDW', 'XDR', 'XRS', 'XRD', 'XRM',
+  'XRF', 'XRW', 'XRZ', 'VMX', 'VDE', 'VRE', 'USB', 'VOL', 'PIT', 'FIN',
 ];
 const PICKER_COLS = 8;
 const KEY_LABEL = { up: '▲', down: '▼', left: '◀', right: '▶', shift: 'SHIFT', play: 'PLAY', opt: 'OPT', edit: 'EDIT' };
@@ -85,19 +85,58 @@ function log(_keys, text, warn = false) {
   flashTimer = setTimeout(() => { flash = null; render(); }, 1800);
 }
 
+// ===== language (JA / EN) =====
+const LANG_KEY = 'm8-trainer-lang';
+let lang = (() => {
+  try { const saved = localStorage.getItem(LANG_KEY); if (saved === 'ja' || saved === 'en') return saved; } catch (e) { /* storage blocked */ }
+  return (navigator.language || '').startsWith('ja') ? 'ja' : 'en';
+})();
+const L = (ja, en) => (lang === 'ja' ? ja : en);
+
+function setLang(next) {
+  lang = next;
+  try { localStorage.setItem(LANG_KEY, next); } catch (e) { /* storage blocked */ }
+  render();
+}
+
+const langEl = document.getElementById('lang');
+langEl.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-lang]');
+  if (b) setLang(b.dataset.lang);
+});
+
+function renderLang() {
+  document.documentElement.lang = lang;
+  langEl.querySelectorAll('[data-lang]').forEach((b) => b.classList.toggle('on', b.dataset.lang === lang));
+}
+
+// ===== sidebar (collapsible) =====
+const SIDE_KEY = 'm8-trainer-side';
+const topEl = document.getElementById('top');
+const sideToggleEl = document.getElementById('side-toggle');
+
+function setSideOpen(open) {
+  topEl.classList.toggle('collapsed', !open);
+  sideToggleEl.setAttribute('aria-expanded', String(open));
+  try { localStorage.setItem(SIDE_KEY, open ? 'open' : 'closed'); } catch (e) { /* storage blocked */ }
+}
+
+sideToggleEl.addEventListener('click', () => setSideOpen(topEl.classList.contains('collapsed')));
+try { if (localStorage.getItem(SIDE_KEY) === 'closed') setSideOpen(false); } catch (e) { /* storage blocked */ }
+
 // ===== reverse-lookup action list =====
 // mods: keys to hold, trig: key(s) to tap, count: taps needed
 const act = (id, label, mods, trig, count = 1) => ({ id, label, mods, trig: [].concat(trig), count });
 const ARROWS = ['left', 'right', 'up', 'down'];
-const PLAYBACK = [
-  act('play', '再生 / 停止', [], 'play'),
-  act('play-song', 'カーソル位置からソング再生', ['shift'], 'play'),
-  act('mute', 'トラックをミュート', ['opt'], 'shift'),
-  act('solo', 'トラックをソロ', ['opt'], 'play'),
+const playback = () => [
+  act('play', L('再生 / 停止', 'Play / stop'), [], 'play'),
+  act('play-song', L('カーソル位置からソング再生', 'Play song from cursor'), ['shift'], 'play'),
+  act('mute', L('トラックをミュート', 'Mute track'), ['opt'], 'shift'),
+  act('solo', L('トラックをソロ', 'Solo track'), ['opt'], 'play'),
 ];
 
 // rough categories for the tabs
-const TABS = [['edit', '編集'], ['sel', '選択'], ['nav', '移動'], ['play', '再生']];
+const TABS = [['edit', '編集', 'Edit'], ['sel', '選択', 'Select'], ['nav', '移動', 'Move'], ['play', '再生', 'Play']];
 const NAV_IDS = ['open-chain', 'open-phrase', 'to-song', 'to-chain', 'page', 'chain-nav', 'phrase-nav', 'track-nav'];
 const PLAY_IDS = ['play', 'play-song', 'mute', 'solo', 'solo-side'];
 const categoryOf = (id) => (NAV_IDS.includes(id) ? 'nav' : PLAY_IDS.includes(id) ? 'play'
@@ -109,24 +148,35 @@ function selectionActions() {
   const { r0, r1, c0, c1 } = selRange();
   const kind = GRID[st.view].kind(c0);
   const single = c0 === c1;
-  const pitch = single && (kind === 'note' || kind === 'tsp');
+  const kinds = [];
+  for (let c = c0; c <= c1; c++) kinds.push(GRID[st.view].kind(c));
+  // step text for the selected columns: pitch columns move by semitone / octave, the rest by number
+  const span = (ks, num, ja, en) => {
+    const pitch = ks.some((k) => k === 'note' || k === 'tsp');
+    const other = ks.some((k) => k !== 'note' && k !== 'tsp');
+    return pitch && other ? [`±(${num} / ${ja})`, `±(${num} / ${en})`] : pitch ? [`±${ja}`, `±${en}`] : [`±${num}`, `±${num}`];
+  };
+  const [smallJa, smallEn] = span(kinds, '1', '半音', 'semitone');
+  const [largeJa, largeEn] = span(kinds.filter((k) => k !== 'fxcmd'), '10', 'オクターブ', 'octave');  // commands have no large step
   const list = [
-    act('sel-grow', '選択範囲を広げる / 狭める', [], ARROWS),
-    act('sel-copy', 'コピーして選択終了', [], 'opt'),
-    act('sel-cut', 'カット (切り取り)', ['opt'], 'edit'),
-    act('sel-small', single && kind === 'fxcmd' ? 'まとめてコマンドを前後' : `まとめて ${pitch ? '±半音' : '±1'}`, ['edit'], ['left', 'right']),
+    act('sel-grow', L('選択範囲を広げる / 狭める', 'Grow / shrink selection'), [], ARROWS),
+    act('sel-copy', L('コピーして選択終了', 'Copy and exit selection'), [], 'opt'),
+    act('sel-cut', L('カット (切り取り)', 'Cut'), ['opt'], 'edit'),
+    act('sel-small', single && kind === 'fxcmd' ? L('まとめてコマンドを前後', 'Step all commands') : L(`まとめて ${smallJa}`, `All ${smallEn}`), ['edit'], ['left', 'right']),
   ];
-  if (st.view === 'song') list.push(act('sel-move', '選択ブロックを上下に移動', ['edit'], ['up', 'down']));
-  else if (st.view === 'phrase' && c1 > c0 && r1 > r0) list.push(act('sel-nudge', '選択内の中身を上下にずらす', ['edit'], ['up', 'down']));
-  else if (!(single && kind === 'fxcmd')) list.push(act('sel-large', `まとめて ${pitch ? '±オクターブ' : '±10'}`, ['edit'], ['up', 'down']));
-  if (canInterpolate()) list.push(act('sel-interp', '最初と最後の値で補間', ['shift'], 'edit'));
-  list.push(act('sel-mode', '選択の形を切替 (範囲 → 行 → 列)', ['shift'], 'opt'));
+  if (st.view === 'song') {
+    // in COLS mode the block spans all 256 rows and has nowhere to move
+    if (st.sel.mode !== 'cols') list.push(act('sel-move', L('選択ブロックを上下に移動', 'Move block up / down'), ['edit'], ['up', 'down']));
+  } else if (st.view === 'phrase' && c1 > c0 && r1 > r0) list.push(act('sel-nudge', L('選択内の中身を上下にずらす', 'Nudge contents up / down'), ['edit'], ['up', 'down']));
+  else if (!(single && kind === 'fxcmd')) list.push(act('sel-large', L(`まとめて大きく ${largeJa}`, `All large step ${largeEn}`), ['edit'], ['up', 'down']));
+  if (canInterpolate()) list.push(act('sel-interp', L('最初と最後の値で補間', 'Interpolate first → last'), ['shift'], 'edit'));
+  list.push(act('sel-mode', L('選択の形を切替 (範囲 → 行 → 列)', 'Cycle shape (cells → rows → cols)'), ['shift'], 'opt'));
   return list;
 }
 
 function selectionTools() {
-  const list = [act('sel-start', '範囲選択を開始', ['shift'], 'opt')];
-  if (canPaste()) list.unshift(act('paste', 'ペースト (カーソル位置に挿入)', ['shift'], 'edit'));
+  const list = [act('sel-start', L('範囲選択を開始', 'Start selection'), ['shift'], 'opt')];
+  if (canPaste()) list.unshift(act('paste', L('ペースト (カーソル位置に挿入)', 'Paste (insert at cursor)'), ['shift'], 'edit'));
   return list;
 }
 let tab = 'edit';
@@ -134,9 +184,9 @@ let tab = 'edit';
 function actionsFor() {
   if (st.picker) {
     return [
-      act('pick', 'コマンドを選ぶ (EDITは押したまま)', ['edit'], ARROWS),
-      act('pick-ok', 'EDITを離して決定', [], 'edit'),
-      act('pick-cancel', 'キャンセル', [], 'opt'),
+      act('pick', L('コマンドを選ぶ (EDITは押したまま)', 'Choose command (keep EDIT held)'), ['edit'], ARROWS),
+      act('pick-ok', L('EDITを離して決定', 'Release EDIT to confirm'), [], 'edit'),
+      act('pick-cancel', L('キャンセル', 'Cancel'), [], 'opt'),
     ];
   }
   if (st.sel) return selectionActions();
@@ -147,35 +197,36 @@ function viewActions() {
   if (st.view === 'song') {
     const v = song[st.song.row][st.song.col];
     const cell = v === EMPTY
-      ? [act('new-chain', '新規CHAINの作成', [], 'edit', 2),
-         act('put-chain', `前回のCHAIN (${hex2(last.chain)}) を置く`, [], 'edit')]
-      : [act('open-chain', 'CHAINを開く', ['shift'], 'right'),
-         act('chain-1', 'CHAIN番号 ±1', ['edit'], ['left', 'right']),
-         act('chain-10', 'CHAIN番号 ±10', ['edit'], ['up', 'down']),
-         act('del-chain', 'CHAINの削除', ['opt'], 'edit')];
-    return [...cell, act('page', '16行ジャンプ', ['opt'], ['up', 'down']),
-      act('solo-side', 'カーソルの左 / 右側をソロ', ['opt'], ['left', 'right']), ...PLAYBACK];
+      ? [act('new-chain', L('新規CHAINの作成', 'New chain'), [], 'edit', 2),
+         act('put-chain', L(`前回のCHAIN (${hex2(last.chain)}) を置く`, `Place last chain (${hex2(last.chain)})`), [], 'edit')]
+      : [act('open-chain', L('CHAINを開く', 'Open chain'), ['shift'], 'right'),
+         act('chain-1', L('CHAIN番号 ±1', 'Chain number ±1'), ['edit'], ['left', 'right']),
+         act('chain-10', L('CHAIN番号 ±10', 'Chain number ±10'), ['edit'], ['up', 'down']),
+         act('del-chain', L('CHAINの削除', 'Delete chain'), ['opt'], 'edit')];
+    return [...cell, act('page', L('16行ジャンプ', 'Jump 16 rows'), ['opt'], ['up', 'down']),
+      act('solo-side', L('カーソルの左 / 右側をソロ', 'Solo tracks left / right of cursor'), ['opt'], ['left', 'right']), ...playback()];
   }
   if (st.view === 'chain') {
     const ch = chains[st.ctx.chainId];
     const { row, col } = st.chain;
     let cell;
     if (col === 1) {
-      cell = [act('tsp-1', 'トランスポーズ ±半音', ['edit'], ['left', 'right']),
-              act('tsp-12', 'トランスポーズ ±オクターブ', ['edit'], ['up', 'down'])];
-      if (ch.tsp[row]) cell.push(act('tsp-0', 'トランスポーズを 00 に戻す', ['opt'], 'edit'));
+      cell = [act('tsp-1', L('トランスポーズ ±半音', 'Transpose ±semitone'), ['edit'], ['left', 'right']),
+              act('tsp-12', L('トランスポーズ ±オクターブ', 'Transpose ±octave'), ['edit'], ['up', 'down'])];
+      if (ch.tsp[row]) cell.push(act('tsp-0', L('トランスポーズを 00 に戻す', 'Reset transpose to 00'), ['opt'], 'edit'));
+      if (ch.ph[row] !== EMPTY) cell.push(act('open-phrase', L('PHRASEを開く', 'Open phrase'), ['shift'], 'right'));
     } else if (ch.ph[row] === EMPTY) {
-      cell = [act('new-phrase', '新規PHRASEの作成', [], 'edit', 2),
-              act('put-phrase', `前回のPHRASE (${hex2(last.phrase)}) を置く`, [], 'edit')];
+      cell = [act('new-phrase', L('新規PHRASEの作成', 'New phrase'), [], 'edit', 2),
+              act('put-phrase', L(`前回のPHRASE (${hex2(last.phrase)}) を置く`, `Place last phrase (${hex2(last.phrase)})`), [], 'edit')];
     } else {
-      cell = [act('open-phrase', 'PHRASEを開く', ['shift'], 'right'),
-              act('phrase-1', 'PHRASE番号 ±1', ['edit'], ['left', 'right']),
-              act('phrase-10', 'PHRASE番号 ±10', ['edit'], ['up', 'down']),
-              act('del-phrase', 'PHRASEの削除', ['opt'], 'edit')];
+      cell = [act('open-phrase', L('PHRASEを開く', 'Open phrase'), ['shift'], 'right'),
+              act('phrase-1', L('PHRASE番号 ±1', 'Phrase number ±1'), ['edit'], ['left', 'right']),
+              act('phrase-10', L('PHRASE番号 ±10', 'Phrase number ±10'), ['edit'], ['up', 'down']),
+              act('del-phrase', L('PHRASEの削除', 'Delete phrase'), ['opt'], 'edit')];
     }
-    return [...cell, act('to-song', 'SONGに戻る', ['shift'], 'left'),
-      act('chain-nav', '前 / 次のCHAINへ', ['opt'], ['up', 'down']),
-      act('track-nav', '隣のトラックへ', ['opt'], ['left', 'right']), ...PLAYBACK];
+    return [...cell, act('to-song', L('SONGに戻る', 'Back to song'), ['shift'], 'left'),
+      act('chain-nav', L('前 / 次のCHAINへ', 'Prev / next chain'), ['opt'], ['up', 'down']),
+      act('track-nav', L('隣のトラックへ', 'Adjacent track'), ['opt'], ['left', 'right']), ...playback()];
   }
   const ph = phrases[st.ctx.phraseId];
   const { row, col } = st.phrase;
@@ -183,37 +234,39 @@ function viewActions() {
   if (col === 0) {
     const n = ph.note[row];
     cell = n === NOTE_EMPTY
-      ? [act('put-note', `ノートを置く (${noteName(last.note)})`, [], 'edit'),
-         act('note-off', 'ノートオフ (OFF) を置く', ['opt'], 'edit')]
+      ? [act('put-note', L(`ノートを置く (${noteName(last.note)})`, `Place note (${noteName(last.note)})`), [], 'edit'),
+         act('note-off', L('ノートオフ (OFF) を置く', 'Place note off (OFF)'), ['opt'], 'edit')]
       : n === NOTE_OFF
-        ? [act('del-note', 'OFFの削除', ['opt'], 'edit')]
-        : [act('note-1', '音程 ±半音', ['edit'], ['left', 'right']),
-           act('note-12', '音程 ±オクターブ', ['edit'], ['up', 'down']),
-           act('del-note', 'ノートの削除', ['opt'], 'edit')];
+        ? [act('del-note', L('OFFの削除', 'Delete OFF'), ['opt'], 'edit')]
+        : [act('note-1', L('音程 ±半音', 'Pitch ±semitone'), ['edit'], ['left', 'right']),
+           act('note-12', L('音程 ±オクターブ', 'Pitch ±octave'), ['edit'], ['up', 'down']),
+           act('del-note', L('ノートの削除', 'Delete note'), ['opt'], 'edit')];
   } else if (col === 1 || col === 2) {
-    const name = col === 1 ? 'ボリューム' : 'インスト';
+    const name = col === 1 ? L('ボリューム', 'Volume') : L('インスト', 'Instrument');
     const empty = (col === 1 ? ph.vol : ph.ins)[row] < 0;
     cell = empty
-      ? [act('put-val', `${name}を置く`, [], 'edit')]
+      ? [act('put-val', L(`${name}を置く`, `Place ${name.toLowerCase()}`), [], 'edit')]
       : [act('val-1', `${name} ±1`, ['edit'], ['left', 'right']),
          act('val-10', `${name} ±10`, ['edit'], ['up', 'down']),
-         act('del-val', `${name}の削除`, ['opt'], 'edit')];
-    if (col === 2) cell.splice(1, 0, act('new-ins', '未使用のインストを割り当て', [], 'edit', 2));
+         act('del-val', L(`${name}の削除`, `Delete ${name.toLowerCase()}`), ['opt'], 'edit')];
+    if (col === 2) cell.splice(1, 0, act('new-ins', L('未使用のインストを割り当て', 'Assign unused instrument'), [], 'edit', 2));
   } else if (isFxCmdCol(col)) {
     cell = ph.fx[fxIndex(col)].cmd[row] < 0
-      ? [act('put-fx', `FXを置く (${FX_CMDS[last.fxCmd]})`, [], 'edit'),
-         act('fx-list', 'FXを一覧から選ぶ', ['edit'], ['up', 'down'])]
-      : [act('fx-list', 'FXを一覧から選ぶ', ['edit'], ['up', 'down']),
-         act('fx-step', 'FX 前 / 次のコマンド', ['edit'], ['left', 'right']),
-         act('del-fx', 'FXの削除', ['opt'], 'edit')];
+      ? [act('put-fx', L(`FXを置く (${FX_CMDS[last.fxCmd]})`, `Place FX (${FX_CMDS[last.fxCmd]})`), [], 'edit'),
+         act('fx-list', L('FXを一覧から選ぶ', 'Pick FX from list'), ['edit'], ['up', 'down'])]
+      : [act('fx-list', L('FXを一覧から選ぶ', 'Pick FX from list'), ['edit'], ['up', 'down']),
+         act('fx-step', L('FX 前 / 次のコマンド', 'FX prev / next command'), ['edit'], ['left', 'right']),
+         act('del-fx', L('FXの削除', 'Delete FX'), ['opt'], 'edit')];
+  } else if (ph.fx[fxIndex(col)].cmd[row] < 0) {
+    cell = [];  // a value without a command cannot be edited
   } else {
-    cell = [act('val-1', 'FX値 ±1', ['edit'], ['left', 'right']),
-            act('val-10', 'FX値 ±10', ['edit'], ['up', 'down']),
-            act('fx-0', 'FX値を 00 に戻す', ['opt'], 'edit')];
+    cell = [act('val-1', L('FX値 ±1', 'FX value ±1'), ['edit'], ['left', 'right']),
+            act('val-10', L('FX値 ±10', 'FX value ±10'), ['edit'], ['up', 'down']),
+            act('fx-0', L('FX値を 00 に戻す', 'Reset FX value to 00'), ['opt'], 'edit')];
   }
-  return [...cell, act('to-chain', 'CHAINに戻る', ['shift'], 'left'),
-    act('phrase-nav', '前 / 次のPHRASEへ', ['opt'], ['up', 'down']),
-    act('track-nav', '隣のトラックへ', ['opt'], ['left', 'right']), ...PLAYBACK];
+  return [...cell, act('to-chain', L('CHAINに戻る', 'Back to chain'), ['shift'], 'left'),
+    act('phrase-nav', L('前 / 次のPHRASEへ', 'Prev / next phrase'), ['opt'], ['up', 'down']),
+    act('track-nav', L('隣のトラックへ', 'Adjacent track'), ['opt'], ['left', 'right']), ...playback()];
 }
 
 function comboText(a) {
@@ -223,8 +276,9 @@ function comboText(a) {
 
 function clipInfo() {
   const name = { song: 'SONG', chain: 'CHAIN', phrase: 'PHRASE' }[clip.view];
-  const size = `${clip.data.length}行×${clip.data[0].length}列`;
-  return `コピー中: ${name} ${size}` + (canPaste() ? '' : `<br><small>${name}画面でペーストできます</small>`);
+  const rows = clip.data.length, cols = clip.data[0].length;
+  return L(`コピー中: ${name} ${rows}行×${cols}列`, `Copied: ${name} ${rows}×${cols}`)
+    + (canPaste() ? '' : `<br><small>${L(`${name}画面でペーストできます`, `Paste it in the ${name} view`)}</small>`);
 }
 
 // currently highlighted action: { ...action, left: taps remaining }
@@ -263,7 +317,8 @@ function renderActions() {
   // the FX picker and selection mode each lock the list to their own tab
   const shown = st.picker ? 'edit' : st.sel ? 'sel' : tab;
   const locked = st.picker || st.sel;
-  tabsEl.innerHTML = TABS.map(([k, name]) => {
+  tabsEl.innerHTML = TABS.map(([k, ja, en]) => {
+    const name = L(ja, en);
     const cls = [k === shown && 'on', locked && k !== shown && 'off', k === 'sel' && canPaste() && 'dot'].filter(Boolean).join(' ');
     return `<button data-tab="${k}" class="${cls}">${name}</button>`;
   }).join('');
@@ -276,7 +331,7 @@ function renderActions() {
     const isMod = guide?.mods.includes(k);
     const isTrig = guide?.trig.includes(k);
     el.classList.toggle('guide', !!(isMod || isTrig));
-    el.dataset.badge = isMod ? '押したまま' : isTrig && guide.count > 1 ? `${guide.left}回` : '';
+    el.dataset.badge = isMod ? L('押したまま', 'HOLD') : isTrig && guide.count > 1 ? L(`${guide.left}回`, `×${guide.left}`) : '';
   });
 }
 
@@ -408,6 +463,7 @@ function render() {
   bodyEl.innerHTML = lines.map((l, i) => `<div class="ln${i === lastIdx ? ' help-ln' : ''}">${l}</div>`).join('');
   renderMinimap();
   renderActions();
+  renderLang();
 }
 
 // ===== cursor movement =====
@@ -516,7 +572,8 @@ function optNav(dir) {
   const t = ctx.track + step;
   if (t < 0 || t > 7) return log(k, 'NO TRACK', true);
   const cid = song[ctx.songRow][t];
-  const pid = cid === EMPTY ? EMPTY : chains[cid].ph[ctx.chainRow];
+  if (cid === EMPTY) return log(k, 'NO CHAIN', true);
+  const pid = chains[cid].ph[ctx.chainRow];
   if (pid === EMPTY) return log(k, 'NO PHRASE', true);
   Object.assign(ctx, { track: t, chainId: cid, phraseId: pid });
   return log(k, `トラック${t + 1}のフレーズ ${hex2(pid)} へ`);
@@ -643,6 +700,7 @@ function editValue(dir) {
     f.cmd[row] = last.fxCmd = clamp(before + deltaFor(dir, 1, 0), 0, FX_CMDS.length - 1);
     return log(k, `コマンド ${FX_CMDS[before]} → ${FX_CMDS[f.cmd[row]]}`);
   }
+  if (f.cmd[row] < 0) return log(k, 'EMPTY', true);
   const before = f.val[row];
   f.val[row] = last.fxVal = clamp(before + deltaFor(dir, 1, 0x10), 0, 0xff);
   return log(k, `${big ? '上位桁' : '下位桁'} ${sign}1 : ${hex2(before)} → ${hex2(f.val[row])}`);
@@ -663,7 +721,7 @@ function deleteValue() {
   }
   if (st.view === 'chain') {
     chains[st.ctx.chainId].tsp[st.chain.row] = 0;
-    return log(k, 'トランスポーズを 00 に戻す');
+    return log(k, L('トランスポーズを 00 に戻す', 'Reset transpose to 00'));
   }
   const ph = phrases[st.ctx.phraseId];
   const { row, col } = st.phrase;
@@ -691,6 +749,7 @@ function deleteValue() {
     f.val[row] = 0;
     return log(k, `${before} を削除`);
   }
+  if (f.cmd[row] < 0) return log(k, 'すでに空欄です');
   f.val[row] = 0;
   return log(k, '値を 00 に戻す');
 }
@@ -726,6 +785,7 @@ const STEP = {
   note: [1, 12, 0, NOTE_MAX], vol: [1, 0x10, 0, VOL_MAX], ins: [1, 0x10, 0, INS_MAX],
   fxcmd: [1, 0, 0, FX_CMDS.length - 1], fxval: [1, 0x10, 0, 0xff],
 };
+const LAST_OF = { chain: 'chain', phrase: 'phrase', note: 'note', vol: 'vol', ins: 'ins', fxcmd: 'fxCmd' };
 const SEL_MODES = ['cells', 'rows', 'cols'];
 const SEL_MODE_NAME = { cells: '', rows: ' ROWS', cols: ' COLS' };
 
@@ -766,14 +826,21 @@ function copySelection(cut) {
   const data = [];
   for (let r = r0; r <= r1; r++) {
     const rowData = [];
-    for (let c = c0; c <= c1; c++) {
-      rowData.push(cellGet(r, c));
-      if (cut) cellSet(r, c, EMPTY_OF[kind(c)]);
-    }
+    for (let c = c0; c <= c1; c++) rowData.push(cellGet(r, c));
     data.push(rowData);
+  }
+  if (cut) {
+    const got = new Set();  // like a delete, the top-left-most cut value of each kind becomes "last"
+    data.forEach((rowData, i) => rowData.forEach((v, j) => {
+      const r = r0 + i, c = c0 + j, k = kind(c), key = LAST_OF[k];
+      if (key && !got.has(key) && v !== EMPTY_OF[k] && !(k === 'note' && v === NOTE_OFF)) { last[key] = v; got.add(key); }
+      cellSet(r, c, EMPTY_OF[k]);
+      if (k === 'fxcmd') cellSet(r, c + 1, 0);  // its value goes with the command
+    }));
   }
   clip = { view: st.view, c0, data };
   st.sel = null;
+  stopRepeat();
   Object.assign(curPos(), { row: r0, col: c0 });
   if (st.view === 'song') scrollSong();
 }
@@ -864,7 +931,7 @@ function interpolate() {
   const cmd = GRID.phrase.kind(c0) === 'fxval' ? cellGet(r0, c0 - 1) : null;
   for (let r = r0; r <= r1; r++) {
     cellSet(r, c0, Math.round(a + ((b - a) * (r - r0)) / (r1 - r0)));
-    if (cmd !== null) cellSet(r, c0 - 1, cmd);
+    if (cmd !== null && cellGet(r, c0 - 1) < 0) cellSet(r, c0 - 1, cmd);  // keep existing commands
   }
 }
 
@@ -886,10 +953,11 @@ function press(key) {
   if (key !== 'opt') optAlone = false;
 
   if (DIRS.includes(key)) {
+    const mode = modeOf();
     handleDirection(key);
-    startRepeat(key);
+    if (modeOf() === mode) startRepeat(key);  // e.g. the arrow that opened the FX picker must not scroll it
   } else if (key === 'edit') {
-    if (held.has('opt')) st.sel ? copySelection(true) : deleteValue();
+    if (held.has('opt')) optEdit();
     else if (held.has('shift')) st.sel ? interpolate() : paste();
     else if (st.sel) { /* EDIT alone does nothing while selecting */ }
     else if (editTapCandidate) {
@@ -899,7 +967,7 @@ function press(key) {
     }
   } else if (key === 'opt') {
     if (st.picker) { st.picker = null; log(['opt'], 'コマンド選択をキャンセル'); }
-    else if (held.has('edit')) st.sel ? copySelection(true) : deleteValue();
+    else if (held.has('edit')) optEdit();
     else if (held.has('shift')) st.sel ? cycleSelection() : startSelection();
     else if (st.sel) optAlone = true;
   } else if (key === 'shift') {
@@ -924,6 +992,12 @@ function release(key) {
   if (key === 'opt' && optAlone) { optAlone = false; if (st.sel) copySelection(false); render(); }
 }
 
+// OPT + EDIT in either order: cut / delete. With SHIFT also held it is the M8's clone, which is not available here
+function optEdit() {
+  if (held.has('shift')) return log([], 'NOT AVAILABLE', true);
+  return st.sel ? copySelection(true) : deleteValue();
+}
+
 function handleDirection(dir) {
   if (st.picker) return held.has('edit') ? pickerMove(dir) : undefined;
   if (st.sel) {
@@ -937,11 +1011,14 @@ function handleDirection(dir) {
   return moveCursor(dir);
 }
 
+const modeOf = () => `${st.view} ${!!st.sel} ${!!st.picker}`;
+
 function startRepeat(dir) {
   stopRepeat();
   if (held.has('shift')) return;  // view switching should not auto-repeat
+  const mode = modeOf();
   repeatTimer = setTimeout(function tick() {
-    if (!held.has(dir)) return;
+    if (!held.has(dir) || modeOf() !== mode) return;  // never repeat into another mode
     handleDirection(dir);
     render();
     repeatTimer = setTimeout(tick, 70);
