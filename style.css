@@ -11,6 +11,7 @@
   --rownum-beat: #c9c9c9;
   --cur-bg: #2f6dff;
   --cur-fg: #fff;
+  --sel-bg: #6a3fb5;
   --play: #4ee37a;
   --key-bg: #333;
   --key-border: #b4b4b4;
@@ -96,6 +97,7 @@ html, body {
 .help { color: var(--accent); font-weight: 500; }
 .help.warn { color: #ff7a59; }
 .cur { background: var(--cur-bg); color: var(--cur-fg); border-radius: 2px; }
+.sel { background: var(--sel-bg); color: #fff; }
 
 .minimap {
   /* own row under the help line, so it never overlaps text */
@@ -136,6 +138,18 @@ html, body {
   cursor: pointer;
 }
 .tabs button.on { color: #000; background: var(--title); border-color: var(--title); }
+.tabs button.off { opacity: 0.35; }
+.tabs button { position: relative; }
+.tabs button.dot::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
 
 .actions {
   list-style: none;
@@ -166,6 +180,15 @@ html, body {
 }
 .actions li.on { border-color: var(--accent); background: #2a2410; }
 .actions li.on .kbd { color: var(--accent); }
+.actions li.info {
+  cursor: default;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #d9c8ff;
+  background: #1d1530;
+  border-color: #3b2a63;
+}
+.actions li.info small { color: #9c8cc0; font-size: 12px; }
 
 /* ---------- button pad (M8 layout) ---------- */
 .pad {
